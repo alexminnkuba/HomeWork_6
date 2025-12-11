@@ -12,6 +12,7 @@
     <main>
         <div>
             <?php
+            require_once 'connection.php';
             require_once 'pages/functions.php';
             checkRemember();
             require_once 'pages/menu.php';

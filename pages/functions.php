@@ -11,8 +11,36 @@ function regUser($username, $email, $password, $password_confirm): array
     $password_confirm = trim($password_confirm);
 
     $errors = validate($username, $email, $password, $password_confirm);
+    if (empty($errors)) {
+        global $conn;
+        try {
+            $sql = "INSERT INTO `users`(`name`, `email`, `password`) VALUES (?,?,?)";
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$username, $email, password_hash($password, PASSWORD_DEFAULT)]);
+            if ($stmt->rowCount()) {
+                return $errors;
+            }
+        } catch (PDOException $e) {
+            echo "SMTH GOES WRONG";
+        }
+    }
     return $errors;
 }
+
+// function validate2($username, $email, $password)
+// {
+//     global $conn;
+//     $errors = [];
+//     $sql = "SELECT * FROM `users` WHERE `name`=? OR `email`=?";
+//     $stmt = $conn->prepare($sql);
+//     $stmt->execute([$username, $email]);
+//     $result = $stmt->fetchAll();
+//     if ($stmt->rowCount()) {
+//         $errors[] = "Login or email is already exists";
+//     }
+
+//     return $errors;
+// }
 
 
 
@@ -20,11 +48,11 @@ function validate($username, $email, $password, $password_confirm)
 {
     $errors = [];
     if (empty($username) || empty($email) || empty($password) || empty($password_confirm)) {
-        $errors = "All fields are required";
+        $errors[] = "All fields are required";
     }
 
     if ($password != $password_confirm) {
-        $errors = "Passwords are don't match";
+        $errors[] = "Passwords are don't match";
     }
 
     if (len($username) < 3 || len($username) > 15) {
@@ -39,25 +67,34 @@ function validate($username, $email, $password, $password_confirm)
         $errors[] = "Некорректный email";
     }
 
-    $db = 'users.txt';
-    $file = fopen($db, "a+");
-    if (empty($errors)) {
-        while ($line = fgets($file)) {
-            $line = trim($line);
-            if (empty($line)) continue;
-
-            $parts = explode(":", $line, 3);
-            $readEmail = $parts[2];
-            if ($readEmail === $email) {
-                $errors[] = "Этот email уже зарегистрирован";
-                break;
-            }
-        }
+    global $conn;
+    $sql = "SELECT * FROM `users` WHERE `name`=? OR `email`=?";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute([$username, $email]);
+    $result = $stmt->fetchAll();
+    if ($stmt->rowCount()) {
+        $errors[] = "Login or email is already exists";
     }
 
-    $line = "$username:" . password_hash($password, PASSWORD_DEFAULT) . ":$email\n";
-    fwrite($file, $line);
-    fclose($file);
+    // $db = 'users.txt';
+    // $file = fopen($db, "a+");
+    // if (empty($errors)) {
+    //     while ($line = fgets($file)) {
+    //         $line = trim($line);
+    //         if (empty($line)) continue;
+
+    //         $parts = explode(":", $line, 3);
+    //         $readEmail = $parts[2];
+    //         if ($readEmail === $email) {
+    //             $errors[] = "Этот email уже зарегистрирован";
+    //             break;
+    //         }
+    //     }
+    // }
+
+    // $line = "$username:" . password_hash($password, PASSWORD_DEFAULT) . ":$email\n";
+    // fwrite($file, $line);
+    // fclose($file);
 
     return $errors;
 }
@@ -89,62 +126,40 @@ function authValidate($email, $password, $remember)
         $errors[] = "Login name must be more than 3 characters and less than 30";
     }
 
-    $db = "users.txt";
-    if (!file_exists($db)) {
-        $errors[] = "Файл с данными не найден";
+    if (!empty($errors)) return $errors;
+
+    $user = getUserByEmail($email);
+    if (!$user || !password_verify($password, $user['password'])) {
+        $errors[] = "Неверный email или пароль";
+        return $errors;
+    }
+    setUserSession($user);
+
+    if ($remember) {
+        setcookie('remember_email', $email, time() + 24 * 60 * 60, "/");
     }
 
-    $file = fopen($db, "r");
-    while ($line = fgets($file)) {
-        $line = trim($line);
-        if (empty($line)) continue;
-
-        $parts = explode(":", $line, 3);
-        $username = $parts[0];
-        $hash = $parts[1];
-        $storedEmail = $parts[2];
-        if (len($storedEmail) === len($email)) {
-            if (password_verify($password, $hash)) {
-                $_SESSION['user'] = [
-                    'username' => $username,
-                    'email' => $storedEmail
-                ];
-            }
-
-            if ($remember) {
-                $expire = time() + 24 * 60 * 60;
-                setcookie('remember_email', $email, $expire, "/");
-            }
-            break;
-        }
-    }
-    fclose($file);
-    return $errors;
+    return [];
 }
 
 function checkRemember()
 {
     if (isset($_SESSION['user'])) return;
 
-    if (isset($_COOKIE['remember_email'])) {
-        $email = $_COOKIE['remember_email'];
-        $db = 'users.txt';
-        if (file_exists($db)) {
-            $file = fopen($db, "r");
-            while ($line = fgets($file)) {
-                $parts = explode(";", trim($line), 3);
-                if (len($parts[2]) === len($email)) {
-                    $_SESSION['user'] = [
-                        'username' => $parts[0],
-                        'email' => $parts[2]
-                    ];
-                    return;
-                }
-            }
-            fclose($file);
-        }
+    if (!isset($_COOKIE['remember_email'])) return;
+
+    $email = $_COOKIE['remember_email'];
+
+    $user = getUserByEmail($email);
+
+    if ($user) {
+        setUserSession($user);
+        setcookie('remember_email', $email, time() + 24 * 60 * 60, "/");
+    } else {
+        setcookie('remember_email', '', time() - 3600, "/");
     }
 }
+
 
 function isLoggedIn(): bool
 {
@@ -197,5 +212,28 @@ function logout()
     if (isset($_COOKIE['remember_email'])) {
         setcookie('remember_email', '', time() - 3600, "/");
         setcookie('remember_token', '', time() - 3600, "/");
+    }
+}
+
+function setUserSession($user)
+{
+    $_SESSION['user'] = [
+        'id' => $user['users_id'],
+        'username' => $user['name'],
+        'email' => $user['email']
+    ];
+}
+
+function getUserByEmail($email)
+{
+    global $conn;
+
+    try {
+        $sql = "SELECT `users_id`, `name`, `email`, `password` FROM `users` WHERE `email` = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([$email]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        return false;
     }
 }
