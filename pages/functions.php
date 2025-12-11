@@ -27,23 +27,6 @@ function regUser($username, $email, $password, $password_confirm): array
     return $errors;
 }
 
-// function validate2($username, $email, $password)
-// {
-//     global $conn;
-//     $errors = [];
-//     $sql = "SELECT * FROM `users` WHERE `name`=? OR `email`=?";
-//     $stmt = $conn->prepare($sql);
-//     $stmt->execute([$username, $email]);
-//     $result = $stmt->fetchAll();
-//     if ($stmt->rowCount()) {
-//         $errors[] = "Login or email is already exists";
-//     }
-
-//     return $errors;
-// }
-
-
-
 function validate($username, $email, $password, $password_confirm)
 {
     $errors = [];
@@ -75,26 +58,6 @@ function validate($username, $email, $password, $password_confirm)
     if ($stmt->rowCount()) {
         $errors[] = "Login or email is already exists";
     }
-
-    // $db = 'users.txt';
-    // $file = fopen($db, "a+");
-    // if (empty($errors)) {
-    //     while ($line = fgets($file)) {
-    //         $line = trim($line);
-    //         if (empty($line)) continue;
-
-    //         $parts = explode(":", $line, 3);
-    //         $readEmail = $parts[2];
-    //         if ($readEmail === $email) {
-    //             $errors[] = "Этот email уже зарегистрирован";
-    //             break;
-    //         }
-    //     }
-    // }
-
-    // $line = "$username:" . password_hash($password, PASSWORD_DEFAULT) . ":$email\n";
-    // fwrite($file, $line);
-    // fclose($file);
 
     return $errors;
 }
@@ -234,6 +197,7 @@ function getUserByEmail($email)
         $stmt->execute([$email]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     } catch (PDOException $e) {
+        echo "SMTH GOES WRONG";
         return false;
     }
 }
